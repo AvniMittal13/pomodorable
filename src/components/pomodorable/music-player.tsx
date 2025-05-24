@@ -2,11 +2,12 @@
 "use client";
 
 import type React from 'react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { PlayCircle, PauseCircle, SkipForward, SkipBack, Music, Volume2, VolumeX } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PlayCircle, PauseCircle, Music, Volume2, VolumeX } from 'lucide-react';
 
 interface Track {
   name: string;
@@ -27,21 +28,44 @@ const MusicPlayer: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Effect for managing volume and mute state
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = isMuted ? 0 : volume;
     }
   }, [volume, isMuted]);
 
+  // Combined effect for loading track, playing, and pausing
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.src = tracks[currentTrackIndex].url;
-      if (isPlaying) {
-        audioRef.current.play().catch(error => console.error("Error playing audio:", error));
+    if (!audioRef.current || tracks.length === 0) return;
+
+    const currentTrack = tracks[currentTrackIndex];
+    if (!currentTrack) return; 
+
+    const newSrc = currentTrack.url;
+
+    // Update src and load only if it's a new track or src is not set
+    if (audioRef.current.src !== newSrc) {
+      audioRef.current.src = newSrc;
+      audioRef.current.load(); // Important to load the new source
+    }
+
+    if (isPlaying) {
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.error("Error playing audio:", error);
+          setIsPlaying(false); // If playing fails, set isPlaying to false
+        });
+      }
+    } else {
+      if (!audioRef.current.paused) {
+        audioRef.current.pause();
       }
     }
-  }, [currentTrackIndex, isPlaying]);
-  
+  }, [currentTrackIndex, isPlaying, tracks]);
+
+
   // Effect to pause music when component unmounts
   useEffect(() => {
     return () => {
@@ -52,22 +76,16 @@ const MusicPlayer: React.FC = () => {
   }, []);
 
   const togglePlayPause = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play().catch(error => console.error("Error playing audio:", error));
-      }
-      setIsPlaying(!isPlaying);
-    }
+    setIsPlaying(prev => !prev);
   };
 
-  const playNextTrack = () => {
+  const handleTrackEnd = () => {
     setCurrentTrackIndex(prevIndex => (prevIndex + 1) % tracks.length);
   };
-
-  const playPreviousTrack = () => {
-    setCurrentTrackIndex(prevIndex => (prevIndex - 1 + tracks.length) % tracks.length);
+  
+  const handleTrackSelect = (trackIndexValue: string) => {
+    const trackIndex = parseInt(trackIndexValue, 10);
+    setCurrentTrackIndex(trackIndex);
   };
 
   const handleVolumeChange = (value: number[]) => {
@@ -80,7 +98,7 @@ const MusicPlayer: React.FC = () => {
     setIsMuted(!isMuted);
   };
   
-  const currentTrack = tracks[currentTrackIndex];
+  const currentTrackDetails = tracks[currentTrackIndex] || { name: "No track selected", artist: "" };
 
   return (
     <Card className="shadow-lg w-full">
@@ -91,20 +109,31 @@ const MusicPlayer: React.FC = () => {
         </CardTitle>
       </CardHeader>
       <CardContent className="text-center">
-        <div className="mb-2">
-          <p className="font-semibold truncate text-lg">{currentTrack.name}</p>
-          <p className="text-sm text-muted-foreground truncate">{currentTrack.artist}</p>
+        <div className="mb-3">
+          <p className="font-semibold truncate text-lg">{currentTrackDetails.name}</p>
+          <p className="text-sm text-muted-foreground truncate">{currentTrackDetails.artist}</p>
         </div>
-        <audio ref={audioRef} src={currentTrack.url} onEnded={playNextTrack} preload="metadata" />
-        <div className="flex items-center justify-center space-x-2 mt-4">
-          <Button variant="ghost" size="icon" onClick={playPreviousTrack} aria-label="Previous track">
-            <SkipBack className="h-5 w-5" />
-          </Button>
+        
+        <audio ref={audioRef} onEnded={handleTrackEnd} preload="metadata" />
+
+        <div className="px-4 mb-4">
+          <Select onValueChange={handleTrackSelect} value={currentTrackIndex.toString()}>
+            <SelectTrigger className="w-full" aria-label="Select track">
+              <SelectValue placeholder="Select a track" />
+            </SelectTrigger>
+            <SelectContent>
+              {tracks.map((track, index) => (
+                <SelectItem key={index} value={index.toString()}>
+                  {track.name} - {track.artist}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center justify-center space-x-2 mt-2">
           <Button variant="default" size="icon" onClick={togglePlayPause} className="w-12 h-12 rounded-full" aria-label={isPlaying ? "Pause music" : "Play music"}>
             {isPlaying ? <PauseCircle className="h-7 w-7" /> : <PlayCircle className="h-7 w-7" />}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={playNextTrack} aria-label="Next track">
-            <SkipForward className="h-5 w-5" />
           </Button>
         </div>
       </CardContent>
