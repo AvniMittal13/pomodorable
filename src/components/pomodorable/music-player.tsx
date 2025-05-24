@@ -16,9 +16,9 @@ interface Track {
 }
 
 const tracks: Track[] = [
-  { name: "Empty Road", artist: "Lofi Hour", url: "https://cdn.pixabay.com/download/audio/2024/02/09/audio_6cebf04af0.mp3?filename=empty-road-188201.mp3" },
-  { name: "Lofi Chill", artist: "BoDleasons", url: "https://cdn.pixabay.com/download/audio/2022/05/27/audio_15df9a6000.mp3?filename=lofi-chill-117099.mp3" },
-  { name: "Chill Abstract", artist: "ComaStudio", url: "https://cdn.pixabay.com/download/audio/2022/07/01/audio_5881715a17.mp3?filename=chill-abstract-intention-12099.mp3" },
+  { name: "Empty Road", artist: "Lofi Hour", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
+  { name: "Lofi Chill", artist: "BoDleasons", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
+  { name: "Chill Abstract", artist: "ComaStudio", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3" },
 ];
 
 const MusicPlayer: React.FC = () => {

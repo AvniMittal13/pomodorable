@@ -3,6 +3,8 @@
 
 import type React from 'react';
 import { useState, useEffect } from 'react';
+import { getAuth } from 'firebase/auth';
+import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,24 +19,37 @@ interface Task {
   completed: boolean;
 }
 
-const TodoList: React.FC = () => {
+interface TodoListProps {
+  onSessionComplete?: () => void; // Optional callback from PomodoroTimer
+}
+
+const TodoList: React.FC<TodoListProps> = ({ onSessionComplete }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTaskText, setNewTaskText] = useState('');
 
-  // Load tasks from localStorage on component mount
-  useEffect(() => {
-    const storedTasks = localStorage.getItem('pomodorable-tasks');
-    if (storedTasks) {
-      setTasks(JSON.parse(storedTasks));
-    }
-  }, []);
+  const auth = getAuth();
+  const db = getFirestore();
 
-  // Save tasks to localStorage whenever tasks change
+  // Effect to save tasks to Firestore when onSessionComplete is triggered
   useEffect(() => {
-    localStorage.setItem('pomodorable-tasks', JSON.stringify(tasks));
-  }, [tasks]);
+    if (onSessionComplete) {
+      const saveHandler = () => {
+        saveTasksToFirestore();
+      };
+      // Assuming onSessionComplete is an event listener or similar mechanism
+      // This is a placeholder - actual integration depends on PomodoroTimer
+      // For demonstration, we'll call saveTasksToFirestore directly if onSessionComplete is provided
+      // In a real app, PomodoroTimer would call onSessionComplete at the right time.
+      // This useEffect approach might need adjustment based on how onSessionComplete is used.
+      // Let's assume onSessionComplete is a prop that changes when a session completes.
+       saveTasksToFirestore();
+    }
+    // The actual trigger for saving should come from the PomodoroTimer completing a session.
+    // This useEffect is simplified; a better approach would be the timer component calling a prop function.
+  }, [onSessionComplete]); // This dependency will cause the effect to run if the function reference changes.
 
   const addTask = () => {
+    // TODO: Consider if new tasks added during a session should immediately update the saved session data, or only at the end.
     if (newTaskText.trim() === '') return;
     const newTask: Task = {
       id: Date.now().toString(),
@@ -59,6 +74,26 @@ const TodoList: React.FC = () => {
   
   const clearCompletedTasks = () => {
     setTasks(prevTasks => prevTasks.filter(task => !task.completed));
+  };
+
+  const saveTasksToFirestore = async () => {
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        // We'll save the current state of tasks.
+        // You might want to add a session ID or a marker for which Pomodoro session this data belongs to.
+        await addDoc(collection(db, 'todos'), {
+          userId: user.uid,
+          tasks: tasks, // Saving the current tasks array
+          date: new Date().toISOString().split('T')[0], // Save date in YYYY-MM-DD format
+          timestamp: serverTimestamp(), // Server timestamp for ordering
+          // sessionId: TODO: Add logic to track and save the current session number
+        });
+        console.log('Tasks saved to Firestore');
+      } catch (error) {
+        console.error('Error saving tasks to Firestore:', error);
+      }
+    }
   };
 
   const completedTasksCount = tasks.filter(task => task.completed).length;

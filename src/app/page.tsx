@@ -1,12 +1,39 @@
 
+"use client";
+
+import { useEffect, useState } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth'; // Removed getAuth
+import { useRouter } from 'next/navigation';
 import PomodoroTimer from '@/components/pomodorable/pomodoro-timer';
 import TodoList from '@/components/pomodorable/todo-list';
 import MoodTracker from '@/components/pomodorable/mood-tracker';
 import PlantTracker from '@/components/pomodorable/plant-tracker';
 import MusicPlayer from '@/components/pomodorable/music-player';
 import StickyNote from '@/components/pomodorable/sticky-note';
+import { auth } from '@/lib/firebase'; // Changed import from 'app' to 'auth'
 
 export default function Home() {
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const router = useRouter();
+  // const auth = getAuth(app); // Removed this line, will use imported auth directly
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (!firebaseUser) {
+        router.push('/landing');
+      } else {
+        setUser(firebaseUser);
+        setLoading(false);
+      }
+    });
+    return () => unsubscribe();
+  }, [auth, router]);
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
+
   return (
     <main className="min-h-screen bg-background text-foreground p-4 sm:p-6 lg:p-8 selection:bg-primary/20">
       <header className="mb-8 text-center">
