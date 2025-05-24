@@ -3,78 +3,100 @@
 @tailwind utilities;
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
+    --background: 240 100% 98%; /* #F5F5FF - Very Light Desaturated Lavender */
+    --foreground: 240 10% 10%; /* Darker Lavender for text */
+
+    --card: 240 67% 94%; /* #E6E6FA - Soft Lavender */
+    --card-foreground: 240 10% 10%; /* Darker Lavender for text on cards */
+
+    --popover: 240 67% 94%; /* Soft Lavender */
+    --popover-foreground: 240 10% 10%;
+
+    --primary: 195 27% 56%; /* #70A1AF - Muted Teal */
+    --primary-foreground: 210 40% 98%; /* Light color for text on teal */
+
+    --secondary: 240 40% 90%; /* Lighter lavender for secondary elements */
+    --secondary-foreground: 195 27% 46%; /* Darker Teal text on lighter lavender */
+
+    --muted: 240 30% 88%; /* Muted lavender */
+    --muted-foreground: 240 15% 50%; /* Darker muted text */
+
+    --accent: 195 27% 56%; /* #70A1AF - Muted Teal */
+    --accent-foreground: 210 40% 98%; /* Light color for text on teal */
+
+    --destructive: 0 72% 51%; /* Softer Red */
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    --border: 240 30% 85%; /* Lavender border */
+    --input: 240 30% 88%; /* Lavender input border */
+    --ring: 195 27% 56%; /* Muted Teal ring */
+
+    --radius: 0.8rem; /* More rounded corners */
+
+    --chart-1: 195 27% 56%;
+    --chart-2: 240 50% 70%;
+    --chart-3: 195 20% 40%;
+    --chart-4: 240 60% 80%;
+    --chart-5: 195 35% 70%;
+
+    --sidebar-background: 240 50% 96%;
+    --sidebar-foreground: 240 10% 20%;
+    --sidebar-primary: 195 27% 56%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 240 50% 92%;
+    --sidebar-accent-foreground: 195 27% 46%;
+    --sidebar-border: 240 30% 85%;
+    --sidebar-ring: 195 27% 56%;
   }
+
   .dark {
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --background: 240 10% 10%; /* Dark Lavender */
+    --foreground: 240 50% 92%; /* Light Lavender text */
+
+    --card: 240 10% 15%; /* Slightly lighter dark lavender for cards */
+    --card-foreground: 240 50% 92%;
+
+    --popover: 240 10% 15%;
+    --popover-foreground: 240 50% 92%;
+
+    --primary: 195 35% 65%; /* Teal, slightly brighter for dark mode */
+    --primary-foreground: 240 5% 5%; /* Dark text on brighter teal */
+
+    --secondary: 240 10% 25%;
+    --secondary-foreground: 195 35% 65%;
+
+    --muted: 240 10% 20%;
+    --muted-foreground: 240 20% 60%;
+
+    --accent: 195 35% 65%;
+    --accent-foreground: 240 5% 5%;
+
+    --destructive: 0 60% 50%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    --border: 240 10% 25%;
+    --input: 240 10% 25%;
+    --ring: 195 40% 70%; /* Brighter Teal ring for dark mode */
+    
+    --chart-1: 195 35% 65%;
+    --chart-2: 240 30% 50%;
+    --chart-3: 195 25% 50%;
+    --chart-4: 240 40% 60%;
+    --chart-5: 195 45% 80%;
+
+    --sidebar-background: 240 10% 12%;
+    --sidebar-foreground: 240 50% 90%;
+    --sidebar-primary: 195 35% 65%;
+    --sidebar-primary-foreground: 240 5% 5%;
+    --sidebar-accent: 240 10% 20%;
+    --sidebar-accent-foreground: 195 35% 65%;
+    --sidebar-border: 240 10% 25%;
+    --sidebar-ring: 195 40% 70%;
   }
 }
 
