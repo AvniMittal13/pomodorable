@@ -4,7 +4,7 @@
 import type React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import type { Firestore } from 'firebase/firestore';
-import { doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, DocumentData } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, DocumentData, serverTimestamp, setDoc } from 'firebase/firestore';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +18,7 @@ export interface Task {
   id: string;
   text: string;
   completed: boolean;
-  createdAt: number; // Timestamp for sorting
+  createdAt: number; // Timestamp for sorting (client-side, consider serverTimestamp for creation if strict order is critical across clients)
 }
 
 interface TodoListProps {
@@ -34,127 +34,115 @@ const TodoList: React.FC<TodoListProps> = ({ db, sessionId, isReadOnly = false }
   const { toast } = useToast();
 
   const getSessionDocRef = useCallback(() => {
-    if (!sessionId) return null;
+    if (!sessionId || !db) return null;
     return doc(db, 'pomodoroSessions', sessionId);
   }, [db, sessionId]);
 
   useEffect(() => {
-    if (!sessionId) {
+    if (!sessionId || !db) {
       setLoading(false);
-      setTasks([]); // Clear tasks if no session ID
+      setTasks([]);
       return;
     }
 
     const sessionDocRef = getSessionDocRef();
-    if (!sessionDocRef) return;
-
+    if (!sessionDocRef) {
+        setLoading(false);
+        return;
+    }
+    
     setLoading(true);
+    console.log(`TodoList: Setting up snapshot for session ${sessionId}`);
     const unsubscribe = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as DocumentData;
+        console.log("TodoList: Data received from snapshot:", data);
         const sessionTasks = (data.todos || []) as Task[];
-        // Sort tasks by creation time, newest first
         setTasks(sessionTasks.sort((a, b) => b.createdAt - a.createdAt));
       } else {
+        console.warn(`TodoList: Session document ${sessionId} not found or todos field missing.`);
         setTasks([]);
-        // console.warn("Session document not found for todos, or todos field is missing.");
       }
       setLoading(false);
     }, (error) => {
-      console.error("Error fetching todos: ", error);
-      toast({ title: "Error", description: "Could not load to-do list.", variant: "destructive" });
+      console.error(`TodoList: Error fetching todos for session ${sessionId}: `, error);
+      toast({ title: "Error Loading Todos", description: `Could not load to-do list: ${error.message}`, variant: "destructive" });
       setLoading(false);
     });
 
-    return () => unsubscribe();
-  }, [sessionId, toast, getSessionDocRef]);
+    return () => {
+        console.log(`TodoList: Cleaning up snapshot for session ${sessionId}`);
+        unsubscribe();
+    };
+  }, [db, sessionId, toast, getSessionDocRef]);
+
+  const updateTasksInFirestore = async (updatedTasks: Task[], operationMessage: string) => {
+    if (isReadOnly || !sessionId || !db) return false;
+    const sessionDocRef = getSessionDocRef();
+    if (!sessionDocRef) {
+      toast({ title: "Error", description: "Session reference missing.", variant: "destructive" });
+      return false;
+    }
+
+    try {
+      console.log(`TodoList: Attempting to ${operationMessage} for session ${sessionId}. New tasks array:`, updatedTasks);
+      // Using updateDoc to replace the entire todos array.
+      // setDoc with merge: true could also be used if creating the field initially.
+      await updateDoc(sessionDocRef, {
+        todos: updatedTasks,
+        todosLastUpdated: serverTimestamp() // Optional: track when todos were last changed
+      });
+      // Toast for individual operations can be noisy; consider a general "changes saved" or rely on optimistic updates.
+      // toast({ title: "To-Do List Updated", description: operationMessage });
+      console.log(`TodoList: ${operationMessage} successful for session ${sessionId}.`);
+      return true;
+    } catch (error: any) {
+      console.error(`TodoList: Error ${operationMessage.toLowerCase()} for session ${sessionId}:`, error);
+      toast({ title: `Error ${operationMessage}`, description: `Failed to update tasks: ${error.message}`, variant: "destructive" });
+      return false;
+    }
+  };
 
   const addTask = async () => {
-    if (isReadOnly || !sessionId || newTaskText.trim() === '') return;
-
-    const sessionDocRef = getSessionDocRef();
-    if (!sessionDocRef) return;
+    if (newTaskText.trim() === '') return;
 
     const newTask: Task = {
-      id: Date.now().toString(), // Simple unique ID
+      id: Date.now().toString(), 
       text: newTaskText.trim(),
       completed: false,
       createdAt: Date.now(),
     };
-
-    try {
-      await updateDoc(sessionDocRef, {
-        todos: arrayUnion(newTask)
-      });
-      setNewTaskText('');
-      // toast({ title: "Task Added", description: `"${newTask.text}" added to your list.` });
-      // Snapshot listener will update local state
-    } catch (error) {
-      console.error('Error adding task:', error);
-      toast({ title: "Error", description: "Failed to add task.", variant: "destructive" });
+    
+    const updatedTasks = [newTask, ...tasks]; // Add to beginning for optimistic UI
+    if (await updateTasksInFirestore(updatedTasks, "adding task")) {
+        setNewTaskText('');
+        // setTasks(updatedTasks); // Handled by onSnapshot for consistency
     }
   };
 
   const toggleTask = async (taskId: string) => {
-    if (isReadOnly || !sessionId) return;
-    const sessionDocRef = getSessionDocRef();
-    if (!sessionDocRef) return;
-
-    const taskToToggle = tasks.find(t => t.id === taskId);
-    if (!taskToToggle) return;
-
-    const updatedTask = { ...taskToToggle, completed: !taskToToggle.completed };
-
-    try {
-      // This is a bit more complex: remove the old, add the new.
-      // Firestore's arrayUnion/Remove work with exact matches.
-      // A simpler way if order doesn't matter or if you re-fetch/re-sort:
-      // Fetch current tasks, modify, then set the whole array.
-      // For now, let's try replacing the entire array.
-      const newTasksArray = tasks.map(t => t.id === taskId ? updatedTask : t);
-      await updateDoc(sessionDocRef, {
-        todos: newTasksArray
-      });
-      // toast({ title: "Task Updated", description: `Task status changed.` });
-    } catch (error) {
-      console.error('Error toggling task:', error);
-      toast({ title: "Error", description: "Failed to update task.", variant: "destructive" });
-    }
+    const updatedTasks = tasks.map(t => 
+      t.id === taskId ? { ...t, completed: !t.completed } : t
+    );
+    await updateTasksInFirestore(updatedTasks, "toggling task");
+    // setTasks(updatedTasks); // Handled by onSnapshot
   };
 
   const deleteTask = async (taskId: string) => {
-    if (isReadOnly || !sessionId) return;
-    const sessionDocRef = getSessionDocRef();
-    if (!sessionDocRef) return;
-
-    const taskToDelete = tasks.find(t => t.id === taskId);
-    if (!taskToDelete) return;
-
-    try {
-      await updateDoc(sessionDocRef, {
-        todos: arrayRemove(taskToDelete)
-      });
-      // toast({ title: "Task Deleted", description: `Task removed from your list.` });
-    } catch (error) {
-      console.error('Error deleting task:', error);
-      toast({ title: "Error", description: "Failed to delete task.", variant: "destructive" });
-    }
+    const updatedTasks = tasks.filter(t => t.id !== taskId);
+    await updateTasksInFirestore(updatedTasks, "deleting task");
+    // setTasks(updatedTasks); // Handled by onSnapshot
   };
   
   const clearCompletedTasks = async () => {
-    if (isReadOnly || !sessionId) return;
-    const sessionDocRef = getSessionDocRef();
-    if (!sessionDocRef) return;
-
     const activeTasks = tasks.filter(task => !task.completed);
-    try {
-      await updateDoc(sessionDocRef, {
-        todos: activeTasks
-      });
-      // toast({ title: "Completed Tasks Cleared" });
-    } catch (error) {
-      console.error('Error clearing completed tasks:', error);
-      toast({ title: "Error", description: "Failed to clear completed tasks.", variant: "destructive" });
+    if (tasks.length === activeTasks.length) { // No completed tasks to clear
+        toast({title: "No tasks to clear", description: "There are no completed tasks in your list."});
+        return;
+    }
+    if (await updateTasksInFirestore(activeTasks, "clearing completed tasks")) {
+        // setTasks(activeTasks); // Handled by onSnapshot
+        toast({ title: "Completed Tasks Cleared" });
     }
   };
 
@@ -180,9 +168,12 @@ const TodoList: React.FC<TodoListProps> = ({ db, sessionId, isReadOnly = false }
                 placeholder="Add a new task for this session..."
                 onKeyPress={(e) => e.key === 'Enter' && addTask()}
                 aria-label="New task input"
-                disabled={loading || !sessionId || isReadOnly}
+                disabled={loading || !sessionId || isReadOnly || !db}
               />
-              <Button onClick={addTask} aria-label="Add task" disabled={loading || !sessionId || isReadOnly || newTaskText.trim() === ''}>
+              <Button 
+                onClick={addTask} 
+                aria-label="Add task" 
+                disabled={loading || !sessionId || isReadOnly || newTaskText.trim() === '' || !db}>
                 <PlusSquare className="h-5 w-5" />
               </Button>
             </div>
@@ -206,7 +197,7 @@ const TodoList: React.FC<TodoListProps> = ({ db, sessionId, isReadOnly = false }
                       checked={task.completed}
                       onCheckedChange={() => toggleTask(task.id)}
                       aria-labelledby={`task-label-${task.id}`}
-                      disabled={isReadOnly || loading}
+                      disabled={isReadOnly || loading || !db}
                     />
                     <label
                       htmlFor={`task-${task.id}`}
@@ -217,7 +208,13 @@ const TodoList: React.FC<TodoListProps> = ({ db, sessionId, isReadOnly = false }
                     </label>
                   </div>
                   {!isReadOnly && (
-                    <Button variant="ghost" size="icon" onClick={() => deleteTask(task.id)} aria-label={`Delete task ${task.text}`} disabled={loading}>
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => deleteTask(task.id)} 
+                        aria-label={`Delete task ${task.text}`} 
+                        disabled={loading || !db}
+                    >
                       <Trash2 className="h-4 w-4 text-destructive/70 hover:text-destructive" />
                     </Button>
                   )}
@@ -233,7 +230,12 @@ const TodoList: React.FC<TodoListProps> = ({ db, sessionId, isReadOnly = false }
           <CardFooter className="p-4 flex justify-between items-center text-sm text-muted-foreground">
             <span>{completedTasksCount} / {totalTasksCount} completed</span>
             {!isReadOnly && completedTasksCount > 0 && (
-               <Button variant="link" onClick={clearCompletedTasks} className="text-xs p-0 h-auto" disabled={loading}>
+               <Button 
+                variant="link" 
+                onClick={clearCompletedTasks} 
+                className="text-xs p-0 h-auto" 
+                disabled={loading || !db}
+                >
                  Clear completed
                </Button>
             )}
@@ -245,3 +247,4 @@ const TodoList: React.FC<TodoListProps> = ({ db, sessionId, isReadOnly = false }
 };
 
 export default TodoList;
+

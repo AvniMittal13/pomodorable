@@ -4,7 +4,7 @@
 import type React from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Firestore } from 'firebase/firestore';
-import { doc, onSnapshot, updateDoc, DocumentData, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, DocumentData, setDoc, serverTimestamp } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -25,12 +25,12 @@ const StickyNote: React.FC<StickyNoteProps> = ({ db, sessionId, isReadOnly = fal
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const getSessionDocRef = useCallback(() => {
-    if (!sessionId) return null;
+    if (!sessionId || !db) return null;
     return doc(db, 'pomodoroSessions', sessionId);
   }, [db, sessionId]);
 
   useEffect(() => {
-    if (!sessionId) {
+    if (!sessionId || !db) {
       setNoteText('');
       setLastSaved(null);
       setLoading(false);
@@ -38,12 +38,17 @@ const StickyNote: React.FC<StickyNoteProps> = ({ db, sessionId, isReadOnly = fal
     }
 
     const sessionDocRef = getSessionDocRef();
-    if (!sessionDocRef) return;
+    if (!sessionDocRef) {
+        setLoading(false);
+        return;
+    }
 
     setLoading(true);
+    console.log(`StickyNote: Setting up snapshot for session ${sessionId}`);
     const unsubscribe = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as DocumentData;
+        console.log("StickyNote: Data received from snapshot:", data);
         setNoteText(data.dailyGoals || '');
         if (data.dailyGoalsLastSaved && data.dailyGoalsLastSaved.toDate) {
           setLastSaved(data.dailyGoalsLastSaved.toDate());
@@ -51,56 +56,56 @@ const StickyNote: React.FC<StickyNoteProps> = ({ db, sessionId, isReadOnly = fal
           setLastSaved(null);
         }
       } else {
+        console.warn(`StickyNote: Session document ${sessionId} not found or dailyGoals field missing.`);
         setNoteText('');
         setLastSaved(null);
-        // console.warn("Session document not found for daily goals, or field is missing.");
       }
       setLoading(false);
     }, (error) => {
-      console.error("Error fetching daily goals: ", error);
-      toast({ title: "Error", description: "Could not load daily goals.", variant: "destructive" });
+      console.error(`StickyNote: Error fetching daily goals for session ${sessionId}: `, error);
+      toast({ title: "Error Loading Goals", description: `Could not load daily goals: ${error.message}`, variant: "destructive" });
       setLoading(false);
     });
 
     return () => {
+      console.log(`StickyNote: Cleaning up snapshot for session ${sessionId}`);
       unsubscribe();
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [sessionId, toast, getSessionDocRef]);
+  }, [db, sessionId, toast, getSessionDocRef]);
 
-  const saveNote = useCallback(async (currentText: string) => {
-    if (isReadOnly || !sessionId) return;
+  const saveNote = useCallback(async (currentText: string, showToast: boolean = false) => {
+    if (isReadOnly || !sessionId || !db) return;
+    
     const sessionDocRef = getSessionDocRef();
-    if (!sessionDocRef) return;
-
-    const now = new Date();
-    try {
-      await updateDoc(sessionDocRef, {
-        dailyGoals: currentText,
-        dailyGoalsLastSaved: now,
-      });
-      // setLastSaved(now); // Handled by onSnapshot to avoid race conditions
-      // No toast here for auto-save to avoid being too noisy
-    } catch (error: any) {
-      // Check if error is due to non-existent document (e.g., very new session)
-      if (error.code === 'not-found' || error.message?.includes('No document to update')) {
-        try {
-            await setDoc(sessionDocRef, { 
-                dailyGoals: currentText, 
-                dailyGoalsLastSaved: now 
-            }, { merge: true });
-        } catch (setError) {
-            console.error("Error setting daily goals after update failed: ", setError);
-            toast({ title: "Error", description: "Failed to save goals.", variant: "destructive" });
-        }
-      } else {
-        console.error("Error saving daily goals: ", error);
-        toast({ title: "Error", description: "Failed to save goals.", variant: "destructive" });
-      }
+    if (!sessionDocRef) {
+        toast({ title: "Error", description: "Session document reference is missing.", variant: "destructive" });
+        return;
     }
-  }, [isReadOnly, sessionId, getSessionDocRef, toast]);
+
+    const dataToSave = {
+        dailyGoals: currentText,
+        dailyGoalsLastSaved: serverTimestamp(),
+    };
+
+    try {
+      console.log(`StickyNote: Attempting to save goals for session ${sessionId}:`, dataToSave);
+      // Using updateDoc assuming the document already exists from session creation.
+      // If it might not (e.g., field added later), setDoc with merge:true is safer.
+      // For this flow, session doc is created first.
+      await updateDoc(sessionDocRef, dataToSave);
+      // setLastSaved will be updated by onSnapshot
+      if (showToast) {
+        toast({ title: "Goals Saved!", description: "Your session goals are up-to-date." });
+      }
+      console.log(`StickyNote: Goals saved successfully for session ${sessionId}.`);
+    } catch (error: any) {
+      console.error(`StickyNote: Error saving daily goals for session ${sessionId}: `, error);
+      toast({ title: "Error Saving Goals", description: `Failed to save goals: ${error.message}`, variant: "destructive" });
+    }
+  }, [isReadOnly, sessionId, db, getSessionDocRef, toast]);
   
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     if (isReadOnly) return;
@@ -111,26 +116,25 @@ const StickyNote: React.FC<StickyNoteProps> = ({ db, sessionId, isReadOnly = fal
       clearTimeout(debounceTimeoutRef.current);
     }
     debounceTimeoutRef.current = setTimeout(() => {
-      saveNote(newText);
-    }, 1500); // Auto-save after 1.5 seconds of inactivity
+      saveNote(newText, false); // Auto-save, no toast unless manual
+    }, 1500);
   };
 
   const handleManualSave = () => {
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
-    saveNote(noteText);
-    toast({ title: "Goals Saved!", description: "Your session goals are up-to-date." });
+    saveNote(noteText, true); // Manual save, show toast
   };
 
   const handleClearNote = async () => {
-    if (isReadOnly || !sessionId) return;
+    if (isReadOnly || !sessionId || !db) return;
     
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
-    setNoteText(''); // Optimistic update
-    await saveNote(''); // Save empty string
+    setNoteText(''); 
+    await saveNote('', true); // Save empty string, show toast for clear
     toast({ title: "Goals Cleared!", variant: "default" });
   };
 
@@ -149,16 +153,16 @@ const StickyNote: React.FC<StickyNoteProps> = ({ db, sessionId, isReadOnly = fal
           placeholder={isReadOnly && !noteText ? "No goals were set for this session." : "Jot down your goals for this session..."}
           className="h-full min-h-[150px] resize-none bg-card/60 focus:bg-background disabled:cursor-not-allowed disabled:opacity-70"
           aria-label="Session goals text area"
-          disabled={loading || isReadOnly || !sessionId}
+          disabled={loading || isReadOnly || !sessionId || !db}
         />
       </CardContent>
       <CardFooter className="flex justify-between items-center p-3 border-t">
         <span className="text-xs text-muted-foreground truncate">
           {loading && "Loading..."}
-          {!loading && sessionId && (lastSaved ? `Last saved: ${lastSaved.toLocaleTimeString()}` : (isReadOnly ? "" : "Not saved yet"))}
-          {!loading && !sessionId && "No active session"}
+          {!loading && sessionId && db && (lastSaved ? `Last saved: ${lastSaved.toLocaleTimeString()}` : (isReadOnly ? "" : "Not saved yet"))}
+          {!loading && (!sessionId || !db) && "Unavailable"}
         </span>
-        {!isReadOnly && sessionId && (
+        {!isReadOnly && sessionId && db && (
           <div className="space-x-2">
             <Button onClick={handleManualSave} size="sm" variant="default" disabled={loading}>
               <Save className="mr-1.5 h-4 w-4" /> Save
@@ -176,3 +180,4 @@ const StickyNote: React.FC<StickyNoteProps> = ({ db, sessionId, isReadOnly = fal
 };
 
 export default StickyNote;
+

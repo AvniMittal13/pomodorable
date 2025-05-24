@@ -7,14 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Smile, Meh, Frown, Sparkles } from 'lucide-react';
 import type { Firestore } from 'firebase/firestore';
-import { doc, setDoc, onSnapshot, DocumentData } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot, DocumentData, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 
 type Mood = 'happy' | 'neutral' | 'sad' | null;
 
 interface MoodTrackerProps {
   db: Firestore;
-  userId?: string | null;
+  userId?: string | null; // Retained for future use, e.g. direct user mood logs
   sessionId?: string | null;
   isReadOnly?: boolean;
 }
@@ -26,23 +26,28 @@ const MoodTracker: React.FC<MoodTrackerProps> = ({ db, userId, sessionId, isRead
   const { toast } = useToast();
 
   const getSessionDocRef = useCallback(() => {
-    if (!sessionId) return null;
+    if (!sessionId || !db) return null;
     return doc(db, 'pomodoroSessions', sessionId);
   }, [db, sessionId]);
 
   useEffect(() => {
-    if (!sessionId || !userId) {
+    if (!sessionId || !userId || !db) {
       setLoading(false);
       return;
     }
 
     const sessionDocRef = getSessionDocRef();
-    if (!sessionDocRef) return;
+    if (!sessionDocRef) {
+        setLoading(false);
+        return;
+    }
 
     setLoading(true);
+    console.log(`MoodTracker: Setting up snapshot for session ${sessionId}`);
     const unsubscribe = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as DocumentData;
+        console.log("MoodTracker: Data received from snapshot:", data);
         setCurrentMood(data.mood || null);
         if (data.moodLastSetTime && data.moodLastSetTime.toDate) {
           setLastMoodSetTime(data.moodLastSetTime.toDate());
@@ -50,39 +55,46 @@ const MoodTracker: React.FC<MoodTrackerProps> = ({ db, userId, sessionId, isRead
           setLastMoodSetTime(null);
         }
       } else {
-        // Session doc might not exist yet if it's a brand new session being initialized
-        // Or if there's an issue. For now, assume new session starts with no mood.
+        console.warn(`MoodTracker: Session document ${sessionId} not found or mood field missing.`);
         setCurrentMood(null);
         setLastMoodSetTime(null);
       }
       setLoading(false);
     }, (error) => {
-      console.error("Error fetching mood: ", error);
-      toast({ title: "Error", description: "Could not load mood data.", variant: "destructive" });
+      console.error(`MoodTracker: Error fetching mood for session ${sessionId}: `, error);
+      toast({ title: "Error Loading Mood", description: `Could not load mood data: ${error.message}`, variant: "destructive" });
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+        console.log(`MoodTracker: Cleaning up snapshot for session ${sessionId}`);
+        unsubscribe();
+    }
   }, [db, sessionId, userId, toast, getSessionDocRef]);
 
   const handleMoodSelect = async (mood: Mood) => {
-    if (isReadOnly || !sessionId || !userId) return;
+    if (isReadOnly || !sessionId || !userId || !db) return;
 
     const sessionDocRef = getSessionDocRef();
-    if (!sessionDocRef) return;
+    if (!sessionDocRef) {
+        toast({ title: "Error", description: "Session document reference is missing.", variant: "destructive" });
+        return;
+    }
 
-    const now = new Date();
-    try {
-      await setDoc(sessionDocRef, { 
+    const moodData = { 
         mood: mood,
-        moodLastSetTime: now,
-      }, { merge: true });
-      // setCurrentMood(mood); // Handled by onSnapshot
-      // setLastMoodSetTime(now); // Handled by onSnapshot
+        moodLastSetTime: serverTimestamp(), // Use serverTimestamp for consistency
+      };
+
+    try {
+      console.log(`MoodTracker: Attempting to save mood for session ${sessionId}:`, moodData);
+      await setDoc(sessionDocRef, moodData, { merge: true });
+      // setCurrentMood and setLastMoodSetTime will be updated by the onSnapshot listener
       toast({ title: "Mood Updated!", description: `Your mood is set to ${mood || 'cleared'}.` });
-    } catch (error) {
-      console.error("Error saving mood: ", error);
-      toast({ title: "Error", description: "Could not save mood.", variant: "destructive" });
+      console.log(`MoodTracker: Mood saved successfully for session ${sessionId}.`);
+    } catch (error: any) {
+      console.error(`MoodTracker: Error saving mood for session ${sessionId}: `, error);
+      toast({ title: "Error Saving Mood", description: `Could not save mood: ${error.message}`, variant: "destructive" });
     }
   };
   
@@ -140,7 +152,7 @@ const MoodTracker: React.FC<MoodTrackerProps> = ({ db, userId, sessionId, isRead
             size="icon"
             onClick={() => handleMoodSelect('happy')}
             aria-label="Set mood to happy"
-            disabled={loading || !sessionId}
+            disabled={loading || !sessionId || !db}
           >
             <Smile className="h-6 w-6" />
           </Button>
@@ -149,7 +161,7 @@ const MoodTracker: React.FC<MoodTrackerProps> = ({ db, userId, sessionId, isRead
             size="icon"
             onClick={() => handleMoodSelect('neutral')}
             aria-label="Set mood to neutral"
-            disabled={loading || !sessionId}
+            disabled={loading || !sessionId || !db}
           >
             <Meh className="h-6 w-6" />
           </Button>
@@ -158,7 +170,7 @@ const MoodTracker: React.FC<MoodTrackerProps> = ({ db, userId, sessionId, isRead
             size="icon"
             onClick={() => handleMoodSelect('sad')}
             aria-label="Set mood to sad"
-            disabled={loading || !sessionId}
+            disabled={loading || !sessionId || !db}
           >
             <Frown className="h-6 w-6" />
           </Button>

@@ -8,10 +8,11 @@ import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp,
 import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { PlusCircle, LogOut, History, Edit3, CalendarDays, CheckCircle, Activity } from 'lucide-react';
+import { PlusCircle, LogOut, History, Activity, CalendarDays } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useToast } from "@/hooks/use-toast";
 
 
 interface PomodoroSession {
@@ -27,6 +28,7 @@ interface PomodoroSession {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState<PomodoroSession[]>([]);
@@ -39,14 +41,14 @@ export default function DashboardPage() {
       } else {
         router.push('/landing');
       }
-      setLoading(false);
+      // Keep loading true until user is set and initial sessions are fetched or determined to be none
     });
     return () => unsubscribeAuth();
   }, [router]);
 
   useEffect(() => {
     if (user) {
-      setLoading(true);
+      setLoading(true); // Start loading when user is available
       const sessionsCol = collection(db, 'pomodoroSessions');
       const q = query(
         sessionsCol,
@@ -54,62 +56,110 @@ export default function DashboardPage() {
         orderBy('startTime', 'desc')
       );
 
+      console.log(`Fetching sessions for user: ${user.uid}`);
       const unsubscribeSessions = onSnapshot(q, (snapshot) => {
         const fetchedSessions = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
         } as PomodoroSession));
         setSessions(fetchedSessions);
-        setLoading(false);
+        console.log(`Fetched ${fetchedSessions.length} sessions.`);
+        setLoading(false); // Stop loading once sessions are fetched
       }, (error) => {
         console.error("Error fetching sessions:", error);
-        setLoading(false);
+        toast({
+          title: "Error Fetching Sessions",
+          description: `Could not load your session history: ${error.message}`,
+          variant: "destructive",
+        });
+        setLoading(false); // Stop loading on error
       });
 
       return () => unsubscribeSessions();
+    } else {
+      // If there's no user, we are not loading sessions, so set loading to false.
+      // Auth listener will redirect if user becomes null.
+      if (!auth.currentUser) { // Check if auth is truly null and not just in transition
+        setLoading(false);
+      }
     }
-  }, [user]);
+  }, [user, toast]);
 
   const handleStartNewSession = async () => {
-    if (!user) return;
+    if (!user) {
+      toast({ title: "User not authenticated", description: "Please sign in to start a session.", variant: "destructive" });
+      return;
+    }
+    if (!db) {
+      toast({ title: "Database not available", description: "Cannot connect to Firestore. Please check console.", variant: "destructive" });
+      console.error("Firestore 'db' instance is not available in handleStartNewSession.");
+      return;
+    }
+
     setIsCreatingSession(true);
+    const sessionPayload = {
+      userId: user.uid,
+      sessionName: `Pomodoro Session - ${new Date().toLocaleTimeString()}`,
+      startTime: serverTimestamp(),
+      date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+      status: 'active' as 'active' | 'completed' | 'pending',
+      durationMinutes: 25, // Default duration
+      todos: [],
+      mood: null,
+      dailyGoals: '',
+    };
+
     try {
-      const newSessionRef = await addDoc(collection(db, 'pomodoroSessions'), {
-        userId: user.uid,
-        sessionName: `Pomodoro Session - ${new Date().toLocaleTimeString()}`,
-        startTime: serverTimestamp(),
-        date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
-        status: 'active',
-        durationMinutes: 25, // Default duration
-        todos: [],
-        mood: null,
-        dailyGoals: '',
+      console.log("Attempting to create new session with payload:", sessionPayload);
+      const newSessionRef = await addDoc(collection(db, 'pomodoroSessions'), sessionPayload);
+      console.log("New session created successfully with ID:", newSessionRef.id);
+      toast({
+        title: "Session Started!",
+        description: "Your new Pomodoro session is ready.",
       });
       router.push(`/session/${newSessionRef.id}`);
-    } catch (error) {
-      console.error("Error starting new session:", error);
+    } catch (error: any) {
+      console.error("Error starting new session in Firestore:", error);
+      toast({
+        title: "Failed to Start Session",
+        description: `Could not create your session in the database: ${error.message}`,
+        variant: "destructive",
+      });
       setIsCreatingSession(false);
-      // Optionally, show a toast notification for the error
     }
+    // setIsCreatingSession(false) will be handled by redirect or error case.
+    // If successful, page navigation occurs, so no need to set it back here.
   };
 
   const handleSignOut = async () => {
     try {
       await signOut(auth);
       router.push('/landing');
-    } catch (error) {
+      toast({ title: "Signed Out", description: "You have been successfully signed out." });
+    } catch (error: any) {
       console.error('Error signing out: ', error);
+      toast({ title: "Sign Out Error", description: error.message, variant: "destructive" });
     }
   };
   
   const formatDate = (timestamp: Timestamp | undefined) => {
     if (!timestamp) return 'N/A';
-    return timestamp.toDate().toLocaleDateString(undefined, {
-      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    // Check if toDate method exists, indicating it's a Firestore Timestamp
+    if (timestamp.toDate) {
+      return timestamp.toDate().toLocaleDateString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
+    }
+    // If it's already a Date object (e.g., from serverTimestamp() optimistic update before sync)
+    if (timestamp instanceof Date) {
+         return timestamp.toLocaleDateString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+    }
+    return 'Invalid Date';
   };
 
-  if (loading && !user) {
+  if (loading) { // Show loading indicator if auth is still resolving or sessions are fetching
      return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10">
         <div className="text-primary animate-pulse text-lg">Loading Dashboard...</div>
@@ -152,7 +202,7 @@ export default function DashboardPage() {
           <CardFooter>
             <Button 
               onClick={handleStartNewSession} 
-              disabled={isCreatingSession}
+              disabled={isCreatingSession || !db} // Disable if db is not available
               size="lg"
               className="w-full sm:w-auto shadow-md hover:shadow-lg transition-shadow"
             >
@@ -172,8 +222,7 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {loading && sessions.length === 0 && <p className="text-muted-foreground">Loading session history...</p>}
-            {!loading && sessions.length === 0 && (
+            {sessions.length === 0 && ( // No loading check here as it's handled above
                <Alert variant="default" className="bg-secondary/30">
                 <Activity className="h-5 w-5 text-primary" />
                 <AlertTitle className="font-semibold">No Sessions Yet!</AlertTitle>
@@ -195,9 +244,9 @@ export default function DashboardPage() {
                            <CardTitle className="text-lg flex justify-between items-center">
                             <span>{session.sessionName}</span>
                              <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                               session.status === 'completed' ? 'bg-green-100 text-green-700' : 
-                               session.status === 'active' ? 'bg-blue-100 text-blue-700' :
-                               'bg-yellow-100 text-yellow-700'
+                               session.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' : 
+                               session.status === 'active' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' :
+                               'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300'
                              }`}>
                               {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
                             </span>
