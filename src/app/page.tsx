@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, setDoc, updateDoc, getDoc, deleteDoc, runTransaction } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -38,17 +38,18 @@ export default function DashboardPage() {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
+        console.log("Auth state changed: User is set", currentUser);
       } else {
+        console.log("Auth state changed: User is null, redirecting to /landing");
         router.push('/landing');
       }
-      // Keep loading true until user is set and initial sessions are fetched or determined to be none
     });
     return () => unsubscribeAuth();
   }, [router]);
 
   useEffect(() => {
-    if (user) {
-      setLoading(true); // Start loading when user is available
+    if (user && user.uid) { // Ensure user and user.uid are available
+      setLoading(true);
       const sessionsCol = collection(db, 'pomodoroSessions');
       const q = query(
         sessionsCol,
@@ -64,22 +65,29 @@ export default function DashboardPage() {
         } as PomodoroSession));
         setSessions(fetchedSessions);
         console.log(`Fetched ${fetchedSessions.length} sessions.`);
-        setLoading(false); // Stop loading once sessions are fetched
+        setLoading(false);
       }, (error) => {
         console.error("Error fetching sessions:", error);
-        toast({
-          title: "Error Fetching Sessions",
-          description: `Could not load your session history: ${error.message}`,
-          variant: "destructive",
-        });
-        setLoading(false); // Stop loading on error
+        if (error.code === 'failed-precondition') {
+            toast({
+                title: "Query Requires an Index",
+                description: `Firestore needs an index for this query. Please create it using the link in the browser console's error message. The error was: ${error.message}`,
+                variant: "destructive",
+                duration: 9000000,
+            });
+        } else {
+            toast({
+              title: "Error Fetching Sessions",
+              description: `Could not load your session history: ${error.message}`,
+              variant: "destructive",
+            });
+        }
+        setLoading(false);
       });
 
       return () => unsubscribeSessions();
     } else {
-      // If there's no user, we are not loading sessions, so set loading to false.
-      // Auth listener will redirect if user becomes null.
-      if (!auth.currentUser) { // Check if auth is truly null and not just in transition
+      if (!auth.currentUser) {
         setLoading(false);
       }
     }
@@ -88,7 +96,13 @@ export default function DashboardPage() {
   const handleStartNewSession = async () => {
     if (!user) {
       toast({ title: "User not authenticated", description: "Please sign in to start a session.", variant: "destructive" });
+      console.error("handleStartNewSession: User not authenticated.");
       return;
+    }
+    if (!user.uid) {
+        toast({ title: "User ID missing", description: "Cannot start session without a user ID. Please re-authenticate.", variant: "destructive" });
+        console.error("handleStartNewSession: User authenticated, but UID is missing.", user);
+        return;
     }
     if (!db) {
       toast({ title: "Database not available", description: "Cannot connect to Firestore. Please check console.", variant: "destructive" });
@@ -97,13 +111,15 @@ export default function DashboardPage() {
     }
 
     setIsCreatingSession(true);
+    console.log(`Preparing to create new session for user.uid: ${user.uid}`); // Diagnostic log
+
     const sessionPayload = {
       userId: user.uid,
       sessionName: `Pomodoro Session - ${new Date().toLocaleTimeString()}`,
       startTime: serverTimestamp(),
       date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
       status: 'active' as 'active' | 'completed' | 'pending',
-      durationMinutes: 25, // Default duration
+      durationMinutes: 25,
       todos: [],
       mood: null,
       dailyGoals: '',
@@ -127,14 +143,12 @@ export default function DashboardPage() {
       });
       setIsCreatingSession(false);
     }
-    // setIsCreatingSession(false) will be handled by redirect or error case.
-    // If successful, page navigation occurs, so no need to set it back here.
   };
 
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      router.push('/landing');
+      router.push('/landing'); // This will trigger onAuthStateChanged which handles user state
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
     } catch (error: any) {
       console.error('Error signing out: ', error);
@@ -144,22 +158,25 @@ export default function DashboardPage() {
   
   const formatDate = (timestamp: Timestamp | undefined) => {
     if (!timestamp) return 'N/A';
-    // Check if toDate method exists, indicating it's a Firestore Timestamp
-    if (timestamp.toDate) {
-      return timestamp.toDate().toLocaleDateString(undefined, {
-        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-      });
-    }
-    // If it's already a Date object (e.g., from serverTimestamp() optimistic update before sync)
-    if (timestamp instanceof Date) {
-         return timestamp.toLocaleDateString(undefined, {
-            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    try {
+      if (timestamp.toDate) {
+        return timestamp.toDate().toLocaleDateString(undefined, {
+          year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
         });
+      }
+      if (timestamp instanceof Date) {
+           return timestamp.toLocaleDateString(undefined, {
+              year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+          });
+      }
+    } catch (e) {
+        console.error("Error formatting date:", e, "Timestamp was:", timestamp);
+        return "Invalid Date";
     }
-    return 'Invalid Date';
+    return 'Invalid Date Object';
   };
 
-  if (loading) { // Show loading indicator if auth is still resolving or sessions are fetching
+  if (loading) {
      return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10">
         <div className="text-primary animate-pulse text-lg">Loading Dashboard...</div>
@@ -202,7 +219,7 @@ export default function DashboardPage() {
           <CardFooter>
             <Button 
               onClick={handleStartNewSession} 
-              disabled={isCreatingSession || !db} // Disable if db is not available
+              disabled={isCreatingSession || !db || !user }
               size="lg"
               className="w-full sm:w-auto shadow-md hover:shadow-lg transition-shadow"
             >
@@ -222,7 +239,7 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {sessions.length === 0 && ( // No loading check here as it's handled above
+            {sessions.length === 0 && (
                <Alert variant="default" className="bg-secondary/30">
                 <Activity className="h-5 w-5 text-primary" />
                 <AlertTitle className="font-semibold">No Sessions Yet!</AlertTitle>
