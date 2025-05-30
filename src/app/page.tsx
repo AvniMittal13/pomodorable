@@ -4,11 +4,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, setDoc, updateDoc, getDoc, deleteDoc, runTransaction } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { PlusCircle, LogOut, History, Activity, CalendarDays } from 'lucide-react';
+import { PlusCircle, LogOut, History, Activity, CalendarDays, CheckCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -48,7 +48,7 @@ export default function DashboardPage() {
   }, [router]);
 
   useEffect(() => {
-    if (user && user.uid) { // Ensure user and user.uid are available
+    if (user && user.uid) {
       setLoading(true);
       const sessionsCol = collection(db, 'pomodoroSessions');
       const q = query(
@@ -57,23 +57,37 @@ export default function DashboardPage() {
         orderBy('startTime', 'desc')
       );
 
-      console.log(`Fetching sessions for user: ${user.uid}`);
+      console.log(`Dashboard: Fetching sessions for user: ${user.uid}`);
       const unsubscribeSessions = onSnapshot(q, (snapshot) => {
         const fetchedSessions = snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data(),
         } as PomodoroSession));
         setSessions(fetchedSessions);
-        console.log(`Fetched ${fetchedSessions.length} sessions.`);
+        console.log(`Dashboard: Fetched ${fetchedSessions.length} sessions.`);
         setLoading(false);
       }, (error) => {
-        console.error("Error fetching sessions:", error);
-        if (error.code === 'failed-precondition') {
+        console.error("Dashboard: Error fetching sessions:", error);
+        if (error.code === 'failed-precondition' || (error.message && error.message.toLowerCase().includes("index"))) {
             toast({
                 title: "Query Requires an Index",
-                description: `Firestore needs an index for this query. Please create it using the link in the browser console's error message. The error was: ${error.message}`,
+                description: (
+                    <span>
+                        Firestore needs an index for this query. Please create it using this link:
+                        <a
+                            href={`https://console.firebase.google.com/v1/r/project/${db?.app?.options?.projectId}/firestore/indexes?create_composite=ClJwcm9qZWN0cy9${db?.app?.options?.projectId}/ZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL3BvbW9kb3JvU2Vzc2lvbnMvaW5kZXhlcy9fEAEaCgoGdXNlcklkEAENGg0KCXN0YXJ0VGltZRACGgwKCF9fbmFtZV9fEAI`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline text-blue-500 hover:text-blue-700 ml-1"
+                        >
+                            Create Index
+                        </a>
+                        <br />
+                        The error was: {error.message}
+                    </span>
+                ),
                 variant: "destructive",
-                duration: 9000000,
+                duration: 9000000, // Keep it visible for a long time
             });
         } else {
             toast({
@@ -111,36 +125,38 @@ export default function DashboardPage() {
     }
 
     setIsCreatingSession(true);
-    console.log(`Preparing to create new session for user.uid: ${user.uid}`); // Diagnostic log
+    console.log(`Dashboard: Preparing to create new session for user.uid: ${user.uid}. Current user object:`, user);
 
     const sessionPayload = {
       userId: user.uid,
-      sessionName: `Pomodoro Session - ${new Date().toLocaleTimeString()}`,
+      sessionName: `Pomodoro Session - ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       startTime: serverTimestamp(),
       date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
       status: 'active' as 'active' | 'completed' | 'pending',
-      durationMinutes: 25,
+      durationMinutes: 25, // Default duration
       todos: [],
       mood: null,
       dailyGoals: '',
     };
 
     try {
-      console.log("Attempting to create new session with payload:", sessionPayload);
+      console.log("Dashboard: Attempting to create new session with payload:", sessionPayload);
       const newSessionRef = await addDoc(collection(db, 'pomodoroSessions'), sessionPayload);
-      console.log("New session created successfully with ID:", newSessionRef.id);
+      console.log("Dashboard: New session created successfully with ID:", newSessionRef.id);
       toast({
         title: "Session Started!",
         description: "Your new Pomodoro session is ready.",
+        action: <CheckCircle className="text-green-500" />
       });
       router.push(`/session/${newSessionRef.id}`);
     } catch (error: any) {
-      console.error("Error starting new session in Firestore:", error);
+      console.error("Dashboard: Error starting new session in Firestore:", error);
       toast({
         title: "Failed to Start Session",
         description: `Could not create your session in the database: ${error.message}`,
         variant: "destructive",
       });
+    } finally {
       setIsCreatingSession(false);
     }
   };
@@ -148,32 +164,32 @@ export default function DashboardPage() {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      router.push('/landing'); // This will trigger onAuthStateChanged which handles user state
+      // onAuthStateChanged will handle redirect to /landing
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
     } catch (error: any) {
-      console.error('Error signing out: ', error);
+      console.error('Dashboard: Error signing out: ', error);
       toast({ title: "Sign Out Error", description: error.message, variant: "destructive" });
     }
   };
   
-  const formatDate = (timestamp: Timestamp | undefined) => {
+  const formatDate = (timestamp: Timestamp | undefined, includeTime: boolean = true) => {
     if (!timestamp) return 'N/A';
     try {
-      if (timestamp.toDate) {
-        return timestamp.toDate().toLocaleDateString(undefined, {
-          year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-        });
+      const dateObj = timestamp.toDate ? timestamp.toDate() : (timestamp instanceof Date ? timestamp : new Date(timestamp as any));
+      if (isNaN(dateObj.getTime())) return "Invalid Date";
+      
+      const options: Intl.DateTimeFormatOptions = {
+        year: 'numeric', month: 'short', day: 'numeric'
+      };
+      if (includeTime) {
+        options.hour = '2-digit';
+        options.minute = '2-digit';
       }
-      if (timestamp instanceof Date) {
-           return timestamp.toLocaleDateString(undefined, {
-              year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-          });
-      }
+      return dateObj.toLocaleDateString(undefined, options);
     } catch (e) {
-        console.error("Error formatting date:", e, "Timestamp was:", timestamp);
+        console.error("Dashboard: Error formatting date:", e, "Timestamp was:", timestamp);
         return "Invalid Date";
     }
-    return 'Invalid Date Object';
   };
 
   if (loading) {
@@ -235,7 +251,7 @@ export default function DashboardPage() {
               Session History
             </CardTitle>
             <CardDescription>
-              Review your past Pomodoro sessions.
+              Review your past Pomodoro sessions. Click on a session to view its details.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -257,28 +273,35 @@ export default function DashboardPage() {
                         className="hover:shadow-md transition-shadow cursor-pointer border-border/70 hover:border-primary/50"
                         onClick={() => router.push(`/session/${session.id}`)}
                       >
-                        <CardHeader className="p-4">
-                           <CardTitle className="text-lg flex justify-between items-center">
-                            <span>{session.sessionName}</span>
-                             <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                               session.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' : 
-                               session.status === 'active' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' :
-                               'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300'
-                             }`}>
-                              {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
-                            </span>
-                          </CardTitle>
-                          <CardDescription className="text-xs text-muted-foreground flex items-center mt-1">
-                            <CalendarDays className="h-3 w-3 mr-1.5" />
-                            Started: {formatDate(session.startTime)}
-                            {session.endTime && <span className="ml-2"> | Ended: {formatDate(session.endTime)}</span>}
-                          </CardDescription>
+                        <CardHeader className="p-4 pb-2">
+                           <div className="flex justify-between items-start">
+                            <CardTitle className="text-lg break-all">
+                              {session.sessionName}
+                            </CardTitle>
+                            <span className={`text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${
+                                session.status === 'completed' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' : 
+                                session.status === 'active' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' :
+                                'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300'
+                              }`}>
+                                {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                              </span>
+                           </div>
+                           <CardDescription className="text-xs text-muted-foreground flex items-center mt-1.5">
+                              <CalendarDays className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
+                              <span>{formatDate(session.startTime, true)}</span>
+                           </CardDescription>
+                           {session.endTime && (
+                             <CardDescription className="text-xs text-muted-foreground flex items-center mt-1">
+                                <CheckCircle className="h-3.5 w-3.5 mr-1.5 flex-shrink-0 text-green-500" />
+                                <span>Completed: {formatDate(session.endTime, true)}</span>
+                             </CardDescription>
+                           )}
                         </CardHeader>
-                         <CardFooter className="p-4 pt-0 text-sm text-muted-foreground">
-                           Duration: {session.durationMinutes} minutes
+                         <CardFooter className="p-4 pt-2 text-sm text-muted-foreground">
+                           Target Duration: {session.durationMinutes} minutes
                         </CardFooter>
                       </Card>
-                       <Separator className="my-3 last:hidden" />
+                       {/* No Separator needed if cards have enough margin/padding visually */}
                     </li>
                   ))}
                 </ul>
