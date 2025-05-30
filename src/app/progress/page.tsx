@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, Timestamp, FirestoreError } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
@@ -12,7 +12,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, CalendarDays, CheckCircle, Activity, Loader2 } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CheckCircle, Activity, Loader2, ExternalLink as ExternalLinkIcon } from 'lucide-react'; 
 import { format, isValid } from 'date-fns';
 
 interface PomodoroSession {
@@ -53,8 +53,8 @@ export default function ProgressPage() {
         console.error("ProgressPage: Firestore 'db' instance is not available.");
         toast({ title: "Database Error", description: "Cannot connect to Firestore.", variant: "destructive" });
       }
-      setSessions([]); // Clear sessions if no user or date
-      setLoadingSessions(false); // Ensure loading is false if criteria not met
+      setSessions([]); 
+      setLoadingSessions(false); 
       return;
     }
 
@@ -64,7 +64,7 @@ export default function ProgressPage() {
     const q = query(
       sessionsCol,
       where('userId', '==', user.uid),
-      where('date', '==', formattedDate), // Query for sessions on the specific 'date' string
+      where('date', '==', formattedDate), 
       orderBy('startTime', 'desc')
     );
 
@@ -77,36 +77,41 @@ export default function ProgressPage() {
       setSessions(fetchedSessions);
       console.log(`ProgressPage: Fetched ${fetchedSessions.length} sessions for ${formattedDate}.`);
       setLoadingSessions(false);
-    }, (error) => {
+    }, (error: FirestoreError) => {
       console.error(`ProgressPage: Error fetching sessions for date ${formattedDate}:`, error);
       if (error.code === 'failed-precondition' || (error.message && error.message.toLowerCase().includes("index"))) {
         const projectId = db?.app?.options?.projectId;
-        // Example index: (userId ASC, date ASC, startTime DESC)
-        const exampleIndexQuery = `Clhwcm9qZWN0cy9${projectId}/ZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL3BvbW9kb3JvU2Vzc2lvbnMvaW5kZXhlcy9fEAEaCgoGdXNlcklkEAESCAoEZGF0ZRABGg0KCXN0YXJ0VGltZRACGgwKCF9fbmFtZV9fEAI`;
-        const indexCreationLink = projectId 
-          ? `https://console.firebase.google.com/v1/r/project/${projectId}/firestore/indexes?create_composite=${exampleIndexQuery}`
-          : "#";
+        let indexCreationLink = "#";
+        if (projectId) {
+            const encodedCollectionId = encodeURIComponent('pomodoroSessions');
+            const fieldPath1 = encodeURIComponent('userId');
+            const order1 = encodeURIComponent('ASCENDING');
+            const fieldPath2 = encodeURIComponent('date');
+            const order2 = encodeURIComponent('ASCENDING');
+            const fieldPath3 = encodeURIComponent('startTime');
+            const order3 = encodeURIComponent('DESCENDING');
+            const queryString = `create_composite=projects/${projectId}/databases/(default)/collectionGroups/${encodedCollectionId}/indexes/-&fieldPath=${fieldPath1}&order=${order1}&fieldPath=${fieldPath2}&order=${order2}&fieldPath=${fieldPath3}&order=${order3}`;
+            indexCreationLink = `https://console.firebase.google.com/project/${projectId}/firestore/indexes?${queryString}`;
+        }
         
         toast({
             title: "Query Requires an Index",
             description: (
-                <span>
-                    Firestore needs an index for this query (likely on userId, date, and startTime).
-                    {projectId ? (
+                <div className="flex flex-col gap-2">
+                    <span>Firestore needs an index for this query (userId ASC, date ASC, startTime DESC).</span>
+                    {projectId && indexCreationLink !== "#" ? (
                       <a
                           href={indexCreationLink}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="underline text-blue-500 hover:text-blue-700 ml-1"
+                          className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
                       >
-                          Create Index
+                          <ExternalLinkIcon className="mr-2 h-4 w-4" /> Create Index in Firebase Console
                       </a>
                     ) : (
-                      " Please check the Firebase console to create the required index."
+                      <span>Please check the Firebase console to create the required index. The error was: {error.message}</span>
                     )}
-                    <br />
-                    The error was: {error.message}
-                </span>
+                </div>
             ),
             variant: "destructive",
             duration: 9000000, 
@@ -125,7 +130,7 @@ export default function ProgressPage() {
     return () => unsubscribeSessions();
   }, [user, selectedDate, toast]);
 
-  const formatDateForDisplay = (timestamp: Timestamp | undefined, includeTime: boolean = true) => {
+  const formatDateForDisplay = (timestamp: Timestamp | undefined | null, includeTime: boolean = true) => {
     if (!timestamp) return 'N/A';
     try {
       const dateObj = timestamp.toDate ? timestamp.toDate() : (timestamp instanceof Date ? timestamp : new Date(timestamp as any));
@@ -157,7 +162,7 @@ export default function ProgressPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 sm:p-6 lg:p-8 selection:bg-primary/20">
       <header className="container mx-auto max-w-5xl mb-8">
-        <Button variant="outline" size="sm" onClick={() => router.push('/')} className="mb-4">
+        <Button variant="outline" size="sm" onClick={() => router.push('/')} className="mb-4 transition-all hover:shadow-md">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
         </Button>
         <h1 className="text-4xl font-extrabold tracking-tight text-primary">
@@ -216,12 +221,12 @@ export default function ProgressPage() {
                 </Alert>
               )}
               {!loadingSessions && sessions.length > 0 && (
-                <ScrollArea className="h-[450px] pr-3"> {/* Adjusted height */}
+                <ScrollArea className="h-[450px] pr-3"> 
                   <ul className="space-y-4">
                     {sessions.map(session => (
                       <li key={session.id}>
                         <Card 
-                          className="hover:shadow-md transition-shadow cursor-pointer border-border/70 hover:border-primary/50"
+                          className="hover:shadow-xl hover:scale-[1.02] transition-all duration-300 ease-in-out cursor-pointer border-border/70 hover:border-primary/50"
                           onClick={() => router.push(`/session/${session.id}`)}
                         >
                           <CardHeader className="p-4 pb-2">
@@ -268,3 +273,23 @@ export default function ProgressPage() {
     </main>
   );
 }
+
+// Helper component for external link icon if not already available
+const ExternalLink: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <polyline points="15 3 21 3 21 9" />
+      <line x1="10" x2="21" y1="14" y2="3" />
+    </svg>
+  );

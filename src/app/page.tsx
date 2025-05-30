@@ -4,11 +4,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, FirestoreError } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { PlusCircle, LogOut, History, Activity, CalendarDays, CheckCircle, BarChart3 } from 'lucide-react';
+import { PlusCircle, LogOut, History, Activity, CalendarDays, CheckCircle, BarChart3, AlertTriangle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -66,39 +66,41 @@ export default function DashboardPage() {
         setSessions(fetchedSessions);
         console.log(`Dashboard: Fetched ${fetchedSessions.length} sessions.`);
         setLoading(false);
-      }, (error) => {
+      }, (error: FirestoreError) => {
         console.error("Dashboard: Error fetching sessions:", error);
         if (error.code === 'failed-precondition' || (error.message && error.message.toLowerCase().includes("index"))) {
             const projectId = db?.app?.options?.projectId;
             let indexCreationLink = "#";
             if (projectId) {
-              // This link is specific to the (userId ==, startTime desc) index.
-              // A more generic link would be: `https://console.firebase.google.com/project/${projectId}/firestore/indexes`
-              indexCreationLink = `https://console.firebase.google.com/v1/r/project/${projectId}/firestore/indexes?create_composite=ClJwcm9qZWN0cy9${projectId}/ZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL3BvbW9kb3JvU2Vzc2lvbnMvaW5kZXhlcy9fEAEaCgoGdXNlcklkEAENGg0KCXN0YXJ0VGltZRACGgwKCF9fbmFtZV9fEAI`;
+              const encodedCollectionId = encodeURIComponent('pomodoroSessions');
+              const fieldPath1 = encodeURIComponent('userId');
+              const order1 = encodeURIComponent('ASCENDING');
+              const fieldPath2 = encodeURIComponent('startTime');
+              const order2 = encodeURIComponent('DESCENDING');
+              const queryString = `create_composite=projects/${projectId}/databases/(default)/collectionGroups/${encodedCollectionId}/indexes/-&fieldPath=${fieldPath1}&order=${order1}&fieldPath=${fieldPath2}&order=${order2}`;
+              indexCreationLink = `https://console.firebase.google.com/project/${projectId}/firestore/indexes?${queryString}`;
             }
             toast({
                 title: "Query Requires an Index",
                 description: (
-                    <span>
-                        Firestore needs an index for this query. Please create it using this link:
-                        {projectId ? (
+                    <div className="flex flex-col gap-2">
+                        <span>Firestore needs an index for this query (userId ASC, startTime DESC).</span>
+                        {projectId && indexCreationLink !== "#" ? (
                           <a
                               href={indexCreationLink}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="underline text-blue-500 hover:text-blue-700 ml-1"
+                              className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
                           >
-                              Create Index
+                              <ExternalLink className="mr-2 h-4 w-4" /> Create Index in Firebase Console
                           </a>
                         ) : (
-                          " Please check the Firebase console to create the required index."
+                          <span>Please check the Firebase console to create the required index. The error was: {error.message}</span>
                         )}
-                        <br />
-                        The error was: {error.message}
-                    </span>
+                    </div>
                 ),
                 variant: "destructive",
-                duration: 9000000, 
+                duration: 9000000,
             });
         } else {
             toast({
@@ -112,7 +114,7 @@ export default function DashboardPage() {
 
       return () => unsubscribeSessions();
     } else {
-      if (!auth.currentUser) { // Ensure loading is false if user is confirmed null and not just initially
+      if (!auth.currentUser) {
         setLoading(false);
       }
     }
@@ -142,12 +144,15 @@ export default function DashboardPage() {
       userId: user.uid,
       sessionName: `Pomodoro - ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       startTime: serverTimestamp(),
-      date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+      endTime: null, 
+      date: new Date().toISOString().split('T')[0], 
       status: 'active' as 'active' | 'completed' | 'pending',
-      durationMinutes: 25, // Default duration
+      durationMinutes: 25, 
       todos: [],
       mood: null,
       dailyGoals: '',
+      moodLastSetTime: null,
+      dailyGoalsLastSaved: null,
     };
 
     try {
@@ -176,14 +181,13 @@ export default function DashboardPage() {
     try {
       await signOut(auth);
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
-      // onAuthStateChanged will handle redirect to /landing
     } catch (error: any) {
       console.error('Dashboard: Error signing out: ', error);
       toast({ title: "Sign Out Error", description: error.message, variant: "destructive" });
     }
   };
   
-  const formatDate = (timestamp: Timestamp | undefined, includeTime: boolean = true) => {
+  const formatDate = (timestamp: Timestamp | undefined | null, includeTime: boolean = true) => {
     if (!timestamp) return 'N/A';
     try {
       const dateObj = timestamp.toDate ? timestamp.toDate() : (timestamp instanceof Date ? timestamp : new Date(timestamp as any));
@@ -223,10 +227,10 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => router.push('/progress')} variant="outline" size="sm">
+          <Button onClick={() => router.push('/progress')} variant="outline" size="sm" className="transition-all hover:shadow-md">
             <BarChart3 className="mr-2 h-4 w-4" /> Check Progress & History
           </Button>
-          <Button onClick={handleSignOut} variant="outline" size="sm">
+          <Button onClick={handleSignOut} variant="outline" size="sm" className="transition-all hover:shadow-md">
             <LogOut className="mr-2 h-4 w-4" /> Sign Out
           </Button>
         </div>
@@ -253,7 +257,6 @@ export default function DashboardPage() {
               onClick={handleStartNewSession} 
               disabled={isCreatingSession || !db || !user }
               size="lg"
-              className="w-full sm:w-auto shadow-md hover:shadow-lg transition-shadow"
             >
               {isCreatingSession ? 'Starting...' : 'Start New Pomodoro Session'}
             </Button>
@@ -286,7 +289,7 @@ export default function DashboardPage() {
                   {sessions.map(session => (
                     <li key={session.id}>
                       <Card 
-                        className="hover:shadow-md transition-shadow cursor-pointer border-border/70 hover:border-primary/50"
+                        className="hover:shadow-xl hover:scale-[1.02] transition-all duration-300 ease-in-out cursor-pointer border-border/70 hover:border-primary/50"
                         onClick={() => router.push(`/session/${session.id}`)}
                       >
                         <CardHeader className="p-4 pb-2">
@@ -332,4 +335,23 @@ export default function DashboardPage() {
     </main>
   );
 }
-    
+
+// Helper component for external link icon if not already available
+const ExternalLink: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <polyline points="15 3 21 3 21 9" />
+    <line x1="10" x2="21" y1="14" y2="3" />
+  </svg>
+);
