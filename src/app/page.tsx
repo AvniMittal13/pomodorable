@@ -8,7 +8,7 @@ import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp,
 import { auth, db } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { PlusCircle, LogOut, History, Activity, CalendarDays, CheckCircle } from 'lucide-react';
+import { PlusCircle, LogOut, History, Activity, CalendarDays, CheckCircle, BarChart3 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -69,25 +69,36 @@ export default function DashboardPage() {
       }, (error) => {
         console.error("Dashboard: Error fetching sessions:", error);
         if (error.code === 'failed-precondition' || (error.message && error.message.toLowerCase().includes("index"))) {
+            const projectId = db?.app?.options?.projectId;
+            let indexCreationLink = "#";
+            if (projectId) {
+              // This link is specific to the (userId ==, startTime desc) index.
+              // A more generic link would be: `https://console.firebase.google.com/project/${projectId}/firestore/indexes`
+              indexCreationLink = `https://console.firebase.google.com/v1/r/project/${projectId}/firestore/indexes?create_composite=ClJwcm9qZWN0cy9${projectId}/ZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL3BvbW9kb3JvU2Vzc2lvbnMvaW5kZXhlcy9fEAEaCgoGdXNlcklkEAENGg0KCXN0YXJ0VGltZRACGgwKCF9fbmFtZV9fEAI`;
+            }
             toast({
                 title: "Query Requires an Index",
                 description: (
                     <span>
                         Firestore needs an index for this query. Please create it using this link:
-                        <a
-                            href={`https://console.firebase.google.com/v1/r/project/${db?.app?.options?.projectId}/firestore/indexes?create_composite=ClJwcm9qZWN0cy9${db?.app?.options?.projectId}/ZGF0YWJhc2VzLyhkZWZhdWx0KS9jb2xsZWN0aW9uR3JvdXBzL3BvbW9kb3JvU2Vzc2lvbnMvaW5kZXhlcy9fEAEaCgoGdXNlcklkEAENGg0KCXN0YXJ0VGltZRACGgwKCF9fbmFtZV9fEAI`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline text-blue-500 hover:text-blue-700 ml-1"
-                        >
-                            Create Index
-                        </a>
+                        {projectId ? (
+                          <a
+                              href={indexCreationLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline text-blue-500 hover:text-blue-700 ml-1"
+                          >
+                              Create Index
+                          </a>
+                        ) : (
+                          " Please check the Firebase console to create the required index."
+                        )}
                         <br />
                         The error was: {error.message}
                     </span>
                 ),
                 variant: "destructive",
-                duration: 9000000, // Keep it visible for a long time
+                duration: 9000000, 
             });
         } else {
             toast({
@@ -101,7 +112,7 @@ export default function DashboardPage() {
 
       return () => unsubscribeSessions();
     } else {
-      if (!auth.currentUser) {
+      if (!auth.currentUser) { // Ensure loading is false if user is confirmed null and not just initially
         setLoading(false);
       }
     }
@@ -129,7 +140,7 @@ export default function DashboardPage() {
 
     const sessionPayload = {
       userId: user.uid,
-      sessionName: `Pomodoro Session - ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      sessionName: `Pomodoro - ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       startTime: serverTimestamp(),
       date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
       status: 'active' as 'active' | 'completed' | 'pending',
@@ -164,8 +175,8 @@ export default function DashboardPage() {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      // onAuthStateChanged will handle redirect to /landing
       toast({ title: "Signed Out", description: "You have been successfully signed out." });
+      // onAuthStateChanged will handle redirect to /landing
     } catch (error: any) {
       console.error('Dashboard: Error signing out: ', error);
       toast({ title: "Sign Out Error", description: error.message, variant: "destructive" });
@@ -202,7 +213,7 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 sm:p-6 lg:p-8 selection:bg-primary/20">
-      <header className="container mx-auto max-w-5xl mb-8 flex justify-between items-center">
+      <header className="container mx-auto max-w-5xl mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div>
           <h1 className="text-4xl font-extrabold tracking-tight text-primary">
             Pomodoro Dashboard
@@ -211,9 +222,14 @@ export default function DashboardPage() {
             Welcome back, {user?.displayName || 'User'}! Review your sessions or start a new one.
           </p>
         </div>
-        <Button onClick={handleSignOut} variant="outline" size="sm">
-          <LogOut className="mr-2 h-4 w-4" /> Sign Out
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => router.push('/progress')} variant="outline" size="sm">
+            <BarChart3 className="mr-2 h-4 w-4" /> Check Progress & History
+          </Button>
+          <Button onClick={handleSignOut} variant="outline" size="sm">
+            <LogOut className="mr-2 h-4 w-4" /> Sign Out
+          </Button>
+        </div>
       </header>
 
       <div className="container mx-auto max-w-5xl space-y-8">
@@ -248,14 +264,14 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle className="text-2xl flex items-center">
               <History className="mr-3 h-7 w-7 text-primary" />
-              Session History
+              Recent Session History
             </CardTitle>
             <CardDescription>
-              Review your past Pomodoro sessions. Click on a session to view its details.
+              Review your most recent Pomodoro sessions. Click on a session to view its details. For full history, check "Progress & History".
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {sessions.length === 0 && (
+            {sessions.length === 0 && !loading && (
                <Alert variant="default" className="bg-secondary/30">
                 <Activity className="h-5 w-5 text-primary" />
                 <AlertTitle className="font-semibold">No Sessions Yet!</AlertTitle>
@@ -288,7 +304,7 @@ export default function DashboardPage() {
                            </div>
                            <CardDescription className="text-xs text-muted-foreground flex items-center mt-1.5">
                               <CalendarDays className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
-                              <span>{formatDate(session.startTime, true)}</span>
+                              <span>Started: {formatDate(session.startTime, true)}</span>
                            </CardDescription>
                            {session.endTime && (
                              <CardDescription className="text-xs text-muted-foreground flex items-center mt-1">
@@ -301,7 +317,6 @@ export default function DashboardPage() {
                            Target Duration: {session.durationMinutes} minutes
                         </CardFooter>
                       </Card>
-                       {/* No Separator needed if cards have enough margin/padding visually */}
                     </li>
                   ))}
                 </ul>
