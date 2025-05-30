@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,16 +9,16 @@ body {
 
 @layer base {
   :root {
-    --background: 240 100% 98%; /* #F5F5FF - Very Light Desaturated Lavender */
+    --background: 240 100% 98%; /* Very Light Desaturated Lavender */
     --foreground: 240 10% 10%; /* Darker Lavender for text */
 
-    --card: 240 67% 94%; /* #E6E6FA - Soft Lavender */
+    --card: 240 67% 94%; /* Soft Lavender */
     --card-foreground: 240 10% 10%; /* Darker Lavender for text on cards */
 
     --popover: 240 67% 94%; /* Soft Lavender */
     --popover-foreground: 240 10% 10%;
 
-    --primary: 195 27% 56%; /* #70A1AF - Muted Teal */
+    --primary: 195 27% 56%; /* Muted Teal */
     --primary-foreground: 210 40% 98%; /* Light color for text on teal */
 
     --secondary: 240 40% 90%; /* Lighter lavender for secondary elements */
@@ -26,36 +27,36 @@ body {
     --muted: 240 30% 88%; /* Muted lavender */
     --muted-foreground: 240 15% 50%; /* Darker muted text */
 
-    --accent: 195 27% 56%; /* #70A1AF - Muted Teal */
+    --accent: 195 27% 56%; /* Muted Teal */
     --accent-foreground: 210 40% 98%; /* Light color for text on teal */
 
-    --destructive: 0 72% 51%; /* Softer Red */
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 72% 51%; /* Standard Red */
+    --destructive-foreground: 0 0% 98%; /* Light text for destructive */
 
     --border: 240 30% 85%; /* Lavender border */
-    --input: 240 30% 88%; /* Lavender input border */
-    --ring: 195 27% 56%; /* Muted Teal ring */
+    --input: 240 30% 88%; /* Lavender input border, same as muted */
+    --ring: 195 27% 56%; /* Muted Teal ring for focus */
 
-    --radius: 0.8rem; /* More rounded corners */
+    --radius: 0.8rem; /* Keeping this for a rounded, cute feel */
 
-    --chart-1: 195 27% 56%;
-    --chart-2: 240 50% 70%;
-    --chart-3: 195 20% 40%;
-    --chart-4: 240 60% 80%;
-    --chart-5: 195 35% 70%;
+    --chart-1: 195 27% 56%; /* Muted Teal - Primary */
+    --chart-2: 240 50% 70%; /* Lighter Lavender variant */
+    --chart-3: 195 20% 40%; /* Darker Muted Teal */
+    --chart-4: 240 60% 80%; /* Another Lighter Lavender variant */
+    --chart-5: 195 35% 70%; /* Brighter Muted Teal variant */
 
-    --sidebar-background: 240 50% 96%;
-    --sidebar-foreground: 240 10% 20%;
-    --sidebar-primary: 195 27% 56%;
-    --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 240 50% 92%;
-    --sidebar-accent-foreground: 195 27% 46%;
-    --sidebar-border: 240 30% 85%;
-    --sidebar-ring: 195 27% 56%;
+    --sidebar-background: 240 50% 96%; /* Slightly off-main light background */
+    --sidebar-foreground: 240 10% 20%; /* Dark text for sidebar */
+    --sidebar-primary: 195 27% 56%; /* Muted Teal */
+    --sidebar-primary-foreground: 210 40% 98%; /* Light text on primary */
+    --sidebar-accent: 240 50% 92%; /* Light lavender accent */
+    --sidebar-accent-foreground: 195 27% 46%; /* Darker teal for text on accent */
+    --sidebar-border: 240 30% 85%; /* Lavender border for sidebar */
+    --sidebar-ring: 195 27% 56%; /* Muted Teal ring for sidebar focus */
   }
 
   .dark {
-    --background: 240 10% 10%; /* Dark Lavender */
+    --background: 240 10% 10%; /* Dark Lavender/Blue */
     --foreground: 240 50% 92%; /* Light Lavender text */
 
     --card: 240 10% 15%; /* Slightly lighter dark lavender for cards */
@@ -65,38 +66,38 @@ body {
     --popover-foreground: 240 50% 92%;
 
     --primary: 195 35% 65%; /* Teal, slightly brighter for dark mode */
-    --primary-foreground: 240 5% 5%; /* Dark text on brighter teal */
+    --primary-foreground: 240 5% 5%; /* Very dark text on brighter teal */
 
-    --secondary: 240 10% 25%;
-    --secondary-foreground: 195 35% 65%;
+    --secondary: 240 10% 25%; /* Darker secondary background */
+    --secondary-foreground: 195 35% 65%; /* Brighter teal text on secondary */
 
     --muted: 240 10% 20%;
     --muted-foreground: 240 20% 60%;
 
-    --accent: 195 35% 65%;
-    --accent-foreground: 240 5% 5%;
+    --accent: 195 35% 65%; /* Teal, same as primary for dark */
+    --accent-foreground: 240 5% 5%; /* Dark text on accent */
 
-    --destructive: 0 60% 50%;
+    --destructive: 0 60% 50%; /* Slightly desaturated red for dark mode */
     --destructive-foreground: 0 0% 98%;
 
     --border: 240 10% 25%;
     --input: 240 10% 25%;
-    --ring: 195 40% 70%; /* Brighter Teal ring for dark mode */
+    --ring: 195 40% 70%; /* Brighter Teal ring for dark mode focus */
     
-    --chart-1: 195 35% 65%;
-    --chart-2: 240 30% 50%;
-    --chart-3: 195 25% 50%;
-    --chart-4: 240 40% 60%;
-    --chart-5: 195 45% 80%;
+    --chart-1: 195 35% 65%; /* Brighter Teal - Primary Dark */
+    --chart-2: 240 30% 50%; /* Muted Dark Lavender variant */
+    --chart-3: 195 25% 50%; /* Medium Dark Teal */
+    --chart-4: 240 40% 60%; /* Another Muted Dark Lavender variant */
+    --chart-5: 195 45% 80%; /* Lightest Teal variant for dark mode */
 
-    --sidebar-background: 240 10% 12%;
-    --sidebar-foreground: 240 50% 90%;
-    --sidebar-primary: 195 35% 65%;
-    --sidebar-primary-foreground: 240 5% 5%;
-    --sidebar-accent: 240 10% 20%;
-    --sidebar-accent-foreground: 195 35% 65%;
-    --sidebar-border: 240 10% 25%;
-    --sidebar-ring: 195 40% 70%;
+    --sidebar-background: 240 10% 12%; /* Very dark sidebar background */
+    --sidebar-foreground: 240 50% 90%; /* Light text for dark sidebar */
+    --sidebar-primary: 195 35% 65%; /* Brighter Teal */
+    --sidebar-primary-foreground: 240 5% 5%; /* Dark text on primary */
+    --sidebar-accent: 240 10% 20%; /* Dark lavender accent */
+    --sidebar-accent-foreground: 195 35% 65%; /* Brighter teal for text on accent */
+    --sidebar-border: 240 10% 25%; /* Dark border for sidebar */
+    --sidebar-ring: 195 40% 70%; /* Brighter Teal ring for dark sidebar focus */
   }
 }
 
