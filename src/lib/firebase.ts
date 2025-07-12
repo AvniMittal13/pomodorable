@@ -28,15 +28,15 @@ console.log("Attempting to read NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID:", process.e
 
 // This is the currently active configuration block
 const firebaseConfig = {
-  apiKey: "AIzaSyCIQpyhsrOKZJbD3jtjNhQEiGCBpp5V8iM",
-  authDomain: "pomodorable-54fcf.firebaseapp.com",
-  projectId: "pomodorable-54fcf",
-  storageBucket: "pomodorable-54fcf.firebasestorage.app",
-  messagingSenderId: "970970840591",
-  appId: "1:970970840591:web:9748f259f783a9738ead7a",
-  measurementId: "G-S5F2T01T9X"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
-console.log("Using hardcoded Firebase config. Ensure these values are correct for your project:", firebaseConfig);
+console.log("Firebase config from ENV:", firebaseConfig);
 
 
 // Initialize Firebase
